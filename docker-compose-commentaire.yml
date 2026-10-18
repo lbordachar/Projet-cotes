@@ -4,6 +4,7 @@ services:
     # Relancer le service apres un arret inattendu, sauf arret volontaire.
     restart: unless-stopped
     ports:
+      - "80:80"
       - "8085:80"
     # Autoriser la lecture des fichiers sans permettre leur modification.
     volumes:
