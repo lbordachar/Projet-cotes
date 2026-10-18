@@ -60,8 +60,9 @@ INSERT INTO matchs_cotes (ligue, equipe_domicile, equipe_exterieur, pari_recomma
 -- TOP 14 (7 matchs)
 ('Top 14', 'Aviron Bayonnais', 'Biarritz Olympique', 'Victoire Bayonne (Safe)', 1.60, 65),
 ('Top 14', 'Section Paloise', 'Stade Toulousain', 'Victoire Toulouse', 1.45, 78),
-('Top 14', 'Union Bordeaux Bègles', 'La Rochelle', 'Moins de 40.5 points', 1.85, 67),
+('Top 14', 'Union Bordeaux Begles', 'La Rochelle', 'Moins de 40.5 points', 1.85, 67),
 ('Top 14', 'Castres Olympique', 'Clermont', 'Victoire Castres', 1.55, 71),
 ('Top 14', 'Racing 92', 'Toulon', 'Victoire Racing 92', 1.40, 76),
-('Top 14', 'Stade Français', 'Lyon OU', 'Victoire Stade Français', 1.50, 73),
+('Top 14', 'Stade Francais', 'Lyon OU', 'Victoire Stade Francais', 1.50, 73),
 ('Top 14', 'Montpellier', 'USA Perpignan', 'Moins de 45.5 points', 1.75, 66);
+EOF
