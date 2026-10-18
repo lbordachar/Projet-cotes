@@ -1,0 +1,95 @@
+services:
+  frontend:
+    image: nginx:alpine
+    # Relancer le service apres un arret inattendu, sauf arret volontaire.
+    restart: unless-stopped
+    ports:
+      - "8085:80"
+    # Autoriser la lecture des fichiers sans permettre leur modification.
+    volumes:
+      - ./frontend:/var/www/html:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - app_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Le code est integre dans l'image du backend.
+    # Utiliser le compte applicatif MySQL, sans le mot de passe root.
+    # Bloquer le lancement si une variable est absente ou vide.
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?MYSQL_DATABASE manquant dans .env}
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER manquant dans .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD manquant dans .env}
+    # Attendre que MySQL accepte les connexions.
+    depends_on:
+      db:
+        condition: service_healthy
+    # Empecher les processus d'obtenir des privileges supplementaires.
+    security_opt:
+      - no-new-privileges:true
+    # Aucun port du backend n'est publie sur la VM.
+    networks:
+      - app_network
+
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD manquant dans .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?MYSQL_DATABASE manquant dans .env}
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER manquant dans .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD manquant dans .env}
+    volumes:
+      # Conserver les donnees lors de la recreation des conteneurs.
+      - db_data:/var/lib/mysql
+      # Executer les scripts seulement a l'initialisation d'une base vide.
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Verifier une connexion SQL avec le compte applicatif.
+      # Le double dollar laisse le conteneur interpreter les variables.
+      test:
+        - CMD-SHELL
+        - >-
+          mysql --protocol=TCP -h 127.0.0.1
+          -u "$$MYSQL_USER" -p"$$MYSQL_PASSWORD"
+          "$$MYSQL_DATABASE" -e "SELECT 1"
+          >/dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      # Laisser le temps a MySQL d'initialiser une base vide.
+      start_period: 180s
+    # Aucun port MySQL n'est publie sur la VM.
+    networks:
+      - app_network
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    restart: unless-stopped
+    # Limiter l'acces a la VM et utiliser un tunnel SSH depuis le Mac.
+    ports:
+      - "127.0.0.1:8084:80"
+    # Saisir les identifiants sur la page de connexion.
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app_network
+
+networks:
+  # Permettre aux services de communiquer par leur nom.
+  app_network:
+    driver: bridge
+
+volumes:
+  # Conserve avec down, supprime avec down -v.
+  db_data:

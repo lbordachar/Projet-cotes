@@ -1,0 +1,24 @@
+# Image officielle PHP avec PHP-FPM.
+FROM php:8.2-fpm
+
+# Dossier contenant le code de l'application.
+WORKDIR /var/www/html
+
+# Installer le pilote MySQL pour PDO.
+# Utiliser la configuration PHP de production.
+# Masquer la version PHP dans les reponses HTTP.
+# Creer un utilisateur sans les privileges root.
+RUN docker-php-ext-install pdo_mysql \
+    && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
+    && printf 'expose_php = Off\n' > "$PHP_INI_DIR/conf.d/security.ini" \
+    && groupadd --gid 1000 appgroup \
+    && useradd --uid 1000 --gid appgroup --create-home appuser
+
+# Copier le code apres les dependances pour profiter du cache.
+COPY --chown=appuser:appgroup api.php ./api.php
+
+# Executer PHP avec le compte non-root.
+USER appuser
+
+# Declarer le port FastCGI sans le publier sur la VM.
+EXPOSE 9000
