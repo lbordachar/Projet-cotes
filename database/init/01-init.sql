@@ -65,4 +65,3 @@ INSERT INTO matchs_cotes (ligue, equipe_domicile, equipe_exterieur, pari_recomma
 ('Top 14', 'Racing 92', 'Toulon', 'Victoire Racing 92', 1.40, 76),
 ('Top 14', 'Stade Francais', 'Lyon OU', 'Victoire Stade Francais', 1.50, 73),
 ('Top 14', 'Montpellier', 'USA Perpignan', 'Moins de 45.5 points', 1.75, 66);
-EOF
