@@ -10,20 +10,27 @@ Le projet comprend quatre services : un frontend Nginx, un backend PHP-FPM, une 
 - Simon Salefranque
 
 ## Fonctionnalites
-- Recuperation dynamique des matchs et des cotes en temps reel via **The Odds API**.
-- Synchronisation et persistance automatique des donnees recuperees dans MySQL (`INSERT ... ON DUPLICATE KEY UPDATE`) avec horodatage (`updated_at`) pour suivre l'evolution dans le temps.
-- Mode de secours automatique (fallback) sur les donnees MySQL locales si l'API externe est indisponible ou si le quota de requetes est atteint.
-- Filtrage par championnat (Ligue des Champions, La Liga, Premier League, Ligue 1, Serie A).
-- Simulation de mises optimales avec la formule de demi-Kelly.
-- Selection de matchs pour constituer un ticket combine, avec calcul de la cote globale et du gain potentiel.
+- Recuperation dynamique des matchs et des cotes en temps reel via **The Odds API** (marches `h2h` et `totals`).
+- Diversification des types de paris populaires pris en charge :
+  - **1N2** : Victoires domicile/exterieur et Matchs nuls (evalues sans distorsion).
+  - **Buts** : Plus de 2.5 buts (+2.5) et Moins de 2.5 buts (-2.5).
+  - **BTTS** : Les deux equipes marquent (Oui), extrapole selon le profil offensif de la rencontre.
+- Synchronisation et persistance automatique dans MySQL (`INSERT ... ON DUPLICATE KEY UPDATE` sur la cle composite ligue/equipes/pari) avec horodatage (`updated_at`) pour constater l'evolution temporelle.
+- Mode de secours automatique (*fallback*) sur les donnees MySQL locales si l'API externe est indisponible ou si le quota gratuit est atteint.
+- Double strategie de mise simulee :
+  - **Budget fixe a repartir** : ventilation ponderee du capital sur un nombre parametrable de paris les plus rentables ($N \ge 1$).
+  - **Demi-Kelly** : gestion proportionnelle du capital pour optimiser la croissance du capital sur les opportunites a valeur positive (*Value Bets*).
+- Selection automatique en un clic du Top $N$ des paris les plus rentables pour constituer le ticket.
+- Selection manuelle de paris pour constituer un ticket combine, avec calcul de la cote globale, de la probabilite estimee et du gain potentiel.
+- Indicateur visuel de chargement interactif (spinner) pour accompagner les requetes de synchronisation multi-championnats.
 
 ## Architecture
 
 | Service | Technologie | Role | Acces |
 | :--- | :--- | :--- | :--- |
-| **frontend** | Nginx Alpine | Sert le HTML et transmet les appels API | Ports 80 et 8086 du serveur |
-| **backend** | PHP 8.2 FPM | Interroge The Odds API (cURL) et synchronise MySQL (PDO) | Port 9000 interne |
-| **db** | MySQL 8.0 | Stocke les matchs de secours et l'historique des cotes API | Port 3306 interne |
+| **frontend** | Nginx Alpine | Sert le HTML, les styles, le script client et transmet les appels API | Ports 80 et 8086 du serveur |
+| **backend** | PHP 8.2 FPM | Interroge The Odds API (cURL multi-marches) et synchronise MySQL (PDO) | Port 9000 interne |
+| **db** | MySQL 8.0 | Stocke les matchs de secours et l'historique complet des cotes API | Port 3306 interne |
 | **phpmyadmin** | phpMyAdmin | Permet d'administrer la base et de verifier les mises a jour | Port 8087 local au serveur |
 
 `Navigateur -> Nginx -> PHP-FPM -> The Odds API & MySQL`
@@ -36,12 +43,12 @@ Les services communiquent sur le reseau Docker `app_network`. Les donnees MySQL 
 - Docker Engine et Docker Compose installes sur le serveur Debian.
 - Git pour recuperer les sources.
 - Les ports 80 et 8086 disponibles et accessibles depuis le reseau de consultation.
-- Un acces aux registres Docker et a Internet (direct ou via proxy) pour interroger l'API externe.
-- Une cle d'API valide pour le service **The Odds API**.
+- Un acces aux registres Docker et a Internet (direct ou via le proxy universitaire `cache.univ-pau.fr:3128`) pour interroger l'API externe.
+- Une cle d'API pour le service **The Odds API**.
 
 ### Recuperer le projet
 ```bash
-git clone <URL_DU_DEPOT_GIT> projet_api
+git clone [https://github.com/lbordachar/Projet-cotes.git](https://github.com/lbordachar/Projet-cotes.git) projet_api
 cd projet_api
 ```
 
@@ -61,60 +68,38 @@ MYSQL_PASSWORD=REMPLACER_PAR_UN_MOT_DE_PASSE_APPLICATION
 ODDS_API_KEY=REMPLACER_PAR_VOTRE_CLE_THE_ODDS_API
 HTTP_PROXY_URL=[http://cache.univ-pau.fr:3128](http://cache.univ-pau.fr:3128)
 ```
-Remplacer les deux mots de passe par des valeurs distinctes et renseigner la cle `ODDS_API_KEY` avant le lancement. La variable `HTTP_PROXY_URL` est optionnelle et peut etre laissee vide si le serveur n'utilise pas le proxy de l'universite. Le fichier `.env` ne doit pas etre ajoute au depot Git.
+Remplacer les deux mots de passe par des valeurs distinctes et renseigner la cle `ODDS_API_KEY` avant le lancement. La variable `HTTP_PROXY_URL` est optionnelle (a vider si le serveur d'evaluation dispose d'un acces direct au Web sans passer par le proxy academique). Le fichier `.env` est ignore par Git (`.gitignore`) et ne doit pas etre ajoute au depot.
 
 ### Demarrer la stack
 ```bash
 docker compose up -d --build
 docker compose ps
 ```
-Au premier lancement, MySQL cree la base et le compte applicatif, puis execute `database/init/01-init.sql` pour charger les 46 matchs de base. Lors des consultations sur l'interface, le backend interroge l'API externe et met a jour la base MySQL en temps reel.
+Au premier lancement, MySQL cree la base et le compte applicatif, puis execute `database/init/01-init.sql` pour charger le catalogue initial de matchs. Lors des consultations via l'interface web, le backend interroge l'API externe, calcule la rentabilite et met a jour la base MySQL en temps reel.
 
-L'initialisation peut prendre quelques instants. Le backend et phpMyAdmin attendent que `db` soit `healthy` avant de demarrer.
+L'initialisation de MySQL peut prendre quelques secondes. Le backend et phpMyAdmin attendent que le conteneur `db` soit signale `healthy` avant de demarrer.
 
-Ouvrir ensuite le site via le nom de domaine declare ou via l'IP :
-- `http://NOM_DE_DOMAINE/`
-- `http://IP_DU_SERVEUR:8086/`
+Acceder ensuite a l'application :
+- Via le nom de domaine : `http://cotes-sportives.eva.univ-pau.fr/`
+- Via l'adresse IP directe : `http://10.3.16.141:8086/`
 
 ## Choix techniques et securite
 
 ### Backend sans privileges root
-PHP-FPM fonctionne avec `appuser`, de UID 1000. Le backend ne recoit pas le mot de passe root de MySQL.
-L'option `no-new-privileges` empeche les processus du backend d'obtenir des privileges supplementaires par les mecanismes du systeme, par exemple un executable setuid.
+PHP-FPM fonctionne avec l'utilisateur dedie `appuser` (UID 1000). Le backend ne dispose d'aucun acces au compte `root` du conteneur ni a celui de MySQL.
+L'option de securite `no-new-privileges` empeche les processus enfants du backend d'elever leurs privileges par les mecanismes systeme (ex. binaires `setuid`).
 
 ### Gestion des secrets et API externe
-La cle d'API externe (`ODDS_API_KEY`) et les identifiants MySQL sont stockes exclusivement dans le fichier `.env` sur le serveur et injectes en variables d'environnement dans le conteneur `backend`. La cle n'est jamais exposee cote client dans le code JavaScript.
+La cle privee `ODDS_API_KEY` et les identifiants MySQL sont centralises dans le fichier `.env` sur le serveur hote et injectes sous forme de variables d'environnement au conteneur `backend`. Aucun secret n'est expose cote client dans le navigateur.
 
 ### Ports exposes
-Seul le frontend est accessible directement sur le reseau du serveur (ports 80 et 8086).
-Les ports MySQL et PHP-FPM ne sont pas publies.
-phpMyAdmin est bride sur l'interface de bouclage locale (`127.0.0.1:8087`) et est accessible a distance uniquement par un tunnel SSH :
+Seul le frontend Nginx est expose publiquement sur le reseau du serveur (port 80 pour le nom de domaine, port 8086 en ecoute alternative).
+Les ports de communication internes MySQL (3306) et PHP-FPM (9000) restent strictement confines au reseau bridge Docker.
+L'interface d'administration phpMyAdmin est bridee sur l'interface locale `127.0.0.1:8087` et requiert un tunnel SSH securise pour y acceder a distance :
 ```bash
-ssh -N -L 8087:127.0.0.1:8087 utilisateur@IP_DU_SERVEUR
+ssh -N -L 8087:127.0.0.1:8087 root@10.3.16.141
 ```
-Puis ouvrir `http://localhost:8087`.
+Puis se connecter depuis son navigateur sur `http://localhost:8087`.
 
 ### Fichiers en lecture seule
-Les fichiers du frontend, la configuration Nginx et les scripts SQL d'initialisation sont montes avec l'option `ro` (read-only). Les conteneurs peuvent les lire sans pouvoir les modifier par ces montages.
-Le volume MySQL `db_data` reste accessible en ecriture pour enregistrer les nouvelles cotes issues de l'API.
-
-### Configuration Nginx et PHP
-Nginx transmet uniquement `/api.php` au backend. Les autres chemins PHP et les fichiers caches sont bloques.
-PHP utilise sa configuration de production pour eviter d'afficher les details des erreurs aux visiteurs. Les versions PHP et Nginx sont masquees dans les en-tetes HTTP.
-
-### Organisation du Dockerfile
-L'image utilise la base officielle `php:8.2-fpm`. Les paquets `curl` et `ca-certificates` sont installes pour garantir les appels HTTPS vers l'API externe, ainsi que le pilote `pdo_mysql` pour la communication avec la base de donnees. Le cache APT est nettoye dans la meme couche `RUN` pour reduire le poids de l'image.
-L'installation des dependances precede la copie de `api.php`. Cet ordre permet de reutiliser le cache de construction lorsque seul le code change.
-Le code est integre dans l'image avec `COPY --chown=appuser:appgroup`, puis PHP est execute avec `appuser`.
-`EXPOSE 9000` documente le port FastCGI sans le publier sur le serveur.
-
-### Simplicite du deploiement
-La stack conserve quatre services orchestres automatiquement.
-Des versions detaillees et commentees des fichiers de configuration (`docker-compose-commentaire.yml` et `backend/Dockerfile-commentaire`) sont egalement presentes dans le depot pour documenter chaque directive sans alourdir les fichiers de production.
-Les variables obligatoires sont verifiees avant le lancement avec la syntaxe `${VARIABLE:?message}`. Les services utilisent `restart: unless-stopped` pour redemarrer apres un arret inattendu ou un redemarrage du demon Docker.
-
-## Limites de la simulation
-- Le calcul de probabilite ajoute un bonus deterministe (`crc32`) a la probabilite implicite de la cote issue du bookmaker afin de simuler un avantage statistique (Value Bet) pour la formule de demi-Kelly.
-- Le champ `indice_rentabilite` correspond a la cote multipliee par la probabilite estimee, et non au ROI net.
-- La probabilite combinee est calculee en multipliant les probabilites des selections, ce qui suppose l'independance des evenements.
-- Le retour brut potentiel inclut la mise initiale.
+Le code source du frontend, la configuration de Nginx ainsi que
