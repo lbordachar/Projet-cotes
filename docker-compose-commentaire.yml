@@ -3,9 +3,10 @@ services:
     image: nginx:alpine
     # Relancer le service apres un arret inattendu, sauf arret volontaire.
     restart: unless-stopped
+    # Port 80 pour la resolution du nom de domaine et 8086 en port alternatif.
     ports:
       - "80:80"
-      - "8085:80"
+      - "8086:80"
     # Autoriser la lecture des fichiers sans permettre leur modification.
     volumes:
       - ./frontend:/var/www/html:ro
@@ -21,20 +22,22 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     # Le code est integre dans l'image du backend.
-    # Utiliser le compte applicatif MySQL, sans le mot de passe root.
-    # Bloquer le lancement si une variable est absente ou vide.
+    # Utiliser le compte applicatif MySQL (sans root) et injecter la cle API externe.
+    # Bloquer le lancement si une variable obligatoire est absente ou vide.
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:?MYSQL_DATABASE manquant dans .env}
       MYSQL_USER: ${MYSQL_USER:?MYSQL_USER manquant dans .env}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD manquant dans .env}
-    # Attendre que MySQL accepte les connexions.
+      ODDS_API_KEY: ${ODDS_API_KEY:?ODDS_API_KEY manquant dans .env}
+      HTTP_PROXY_URL: ${HTTP_PROXY_URL:-}
+    # Attendre que MySQL accepte les connexions avant de lancer le backend.
     depends_on:
       db:
         condition: service_healthy
     # Empecher les processus d'obtenir des privileges supplementaires.
     security_opt:
       - no-new-privileges:true
-    # Aucun port du backend n'est publie sur la VM.
+    # Aucun port du backend n'est publie sur le serveur hote.
     networks:
       - app_network
 
@@ -49,7 +52,7 @@ services:
     volumes:
       # Conserver les donnees lors de la recreation des conteneurs.
       - db_data:/var/lib/mysql
-      # Executer les scripts seulement a l'initialisation d'une base vide.
+      # Executer les scripts SQL uniquement a l'initialisation d'une base vide.
       - ./database/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # Verifier une connexion SQL avec le compte applicatif.
@@ -66,17 +69,17 @@ services:
       retries: 12
       # Laisser le temps a MySQL d'initialiser une base vide.
       start_period: 180s
-    # Aucun port MySQL n'est publie sur la VM.
+    # Aucun port MySQL n'est publie sur le serveur hote.
     networks:
       - app_network
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
     restart: unless-stopped
-    # Limiter l'acces a la VM et utiliser un tunnel SSH depuis le Mac.
+    # Limiter l'acces a l'interface locale du serveur pour utilisation via tunnel SSH.
     ports:
-      - "127.0.0.1:8084:80"
-    # Saisir les identifiants sur la page de connexion.
+      - "127.0.0.1:8087:80"
+    # Saisir les identifiants manuellement sur la page de connexion.
     environment:
       PMA_HOST: db
       PMA_PORT: 3306
@@ -87,10 +90,10 @@ services:
       - app_network
 
 networks:
-  # Permettre aux services de communiquer par leur nom.
+  # Permettre aux services de communiquer de maniere isolee par leur nom DNS.
   app_network:
     driver: bridge
 
 volumes:
-  # Conserve avec down, supprime avec down -v.
+  # Conserve avec docker compose down, supprime avec docker compose down -v.
   db_data:

@@ -8,7 +8,6 @@
         body { font-family: 'Segoe UI', Arial, sans-serif; margin: 30px; background-color: #f4f7f6; color: #2c3e50; }
         h1 { margin-bottom: 25px; font-size: 24px; border-bottom: 2px solid #3498db; padding-bottom: 10px; display: inline-block; }
         
-        /* Amélioration de la clarté avec des groupes de contrôles (Labels + Inputs) */
         .controls { display: flex; gap: 25px; margin-bottom: 20px; align-items: flex-end; background: white; padding: 20px 25px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         .control-group { display: flex; flex-direction: column; gap: 8px; }
         .control-label { font-size: 13px; font-weight: 600; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -52,19 +51,19 @@
     <div class="controls">
         <div class="control-group">
             <label class="control-label" for="filtre-ligue">1. Filtrer par championnat</label>
-            <select id="filtre-ligue">
+	<select id="filtre-ligue">
                 <option value="Toutes">Toutes les compétitions</option>
+                <option value="Ligue des Champions">Ligue des Champions</option>
                 <option value="La Liga">La Liga</option>
                 <option value="Premier League">Premier League</option>
                 <option value="Ligue 1">Ligue 1</option>
-                <option value="Top 14">Top 14</option>
                 <option value="Serie A">Serie A</option>
             </select>
         </div>
         
         <div class="control-group">
             <label class="control-label" for="bankroll-utilisateur">2. Votre Capital Total (€)</label>
-            <input type="number" id="bankroll-utilisateur" value="100" min="10" step="0.10" required>
+            <input type="number" id="bankroll-utilisateur" value="100" min="10" step="1" required>
         </div>
 
         <div class="control-group">
@@ -98,19 +97,19 @@
             </ul>
             <div class="ticket-summary">
                 <div class="summary-row">
-                    <span>Cote Globale:</span>
+                    <span>Cote Globale :</span>
                     <strong id="ticket-cote">-</strong>
                 </div>
                 <div class="summary-row">
-                    <span>Proba. de succès:</span>
+                    <span>Proba. de succès :</span>
                     <strong id="ticket-proba">-</strong>
                 </div>
                 <div class="summary-row" style="margin-top: 15px;">
-                    <span>Mise sur le ticket (€):</span>
+                    <span>Mise sur le ticket (€) :</span>
                     <input type="number" id="ticket-mise" value="10" style="width: 80px; padding: 5px; text-align: right;" onchange="updateTicket()">
                 </div>
                 <div class="summary-row total">
-                    <span>Gain Potentiel:</span>
+                    <span>Gain Potentiel :</span>
                     <span id="ticket-gain">0.00 €</span>
                 </div>
             </div>
@@ -118,42 +117,29 @@
     </div>
 
     <script>
-function fetchData() {
-    // Vérifier la saisie avant de demander les données.
-    const capitalInput = document.getElementById('bankroll-utilisateur');
-    if (!capitalInput.reportValidity()) {
-        return;
-    }
+        function fetchData() {
+            const capitalInput = document.getElementById('bankroll-utilisateur');
+            if (!capitalInput.reportValidity()) return;
 
-    fetch('/api.php')
-        .then(response => {
-            // Une réponse HTTP en erreur ne fait pas échouer fetch automatiquement.
-            if (!response.ok) {
-                throw new Error(`API indisponible (HTTP ${response.status}).`);
-            }
-            return response.json();
-        })
-        .then(res => {
-            // Vérifier le format avant de filtrer les matchs.
-            if (!res || !Array.isArray(res.data)) {
-                throw new Error("La réponse de l’API ne contient pas de liste de matchs.");
-            }
+            const ligueFiltre = document.getElementById('filtre-ligue').value;
+            const bankroll = parseFloat(capitalInput.value) || 0;
 
-            const tbody = document.getElementById('resultats-body');                    
-		tbody.innerHTML = '';
-                    
-                    const ligueFiltre = document.getElementById('filtre-ligue').value;
-                    const bankroll = parseFloat(document.getElementById('bankroll-utilisateur').value) || 0;
+            fetch(`/api.php?action=api_externe&ligue=${encodeURIComponent(ligueFiltre)}`)
+                .then(response => {
+                    if (!response.ok) throw new Error(`API indisponible (HTTP ${response.status}).`);
+                    return response.json();
+                })
+                .then(res => {
+                    if (!res || !Array.isArray(res.data)) throw new Error("Format de réponse invalide.");
 
-                    const donneesFiltrees = res.data.filter(item => {
-                        if (ligueFiltre === "Toutes") return true;
-                        return item.ligue === ligueFiltre;
-                    });
+                    const tbody = document.getElementById('resultats-body');
+                    tbody.innerHTML = '';
 
+                    const donneesFiltrees = res.data;
                     let parisRecommandes = 0;
                     const MAX_PARIS_SIMULTANES = 3;
 
-                    donneesFiltrees.forEach((item, index) => {
+                    donneesFiltrees.forEach((item) => {
                         const tr = document.createElement('tr');
                         
                         let badgeClass = 'badge-safe';

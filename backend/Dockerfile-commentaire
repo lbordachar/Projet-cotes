@@ -1,24 +1,30 @@
-# Image officielle PHP avec PHP-FPM.
+# Image officielle PHP 8.2 FPM (base Debian).
 FROM php:8.2-fpm
 
 # Dossier contenant le code de l'application.
 WORKDIR /var/www/html
 
-# Installer le pilote MySQL pour PDO.
-# Utiliser la configuration PHP de production.
-# Masquer la version PHP dans les reponses HTTP.
-# Creer un utilisateur sans les privileges root.
-RUN docker-php-ext-install pdo_mysql \
+# 1. Installer curl et les certificats SSL pour les requetes HTTPS vers The Odds API.
+# 2. Nettoyer le cache APT pour reduire la taille de l'image.
+# 3. Installer le pilote MySQL pour PDO.
+# 4. Activer la configuration PHP de production et masquer la version de PHP.
+# 5. Creer un groupe et un utilisateur dedies sans privileges root (UID/GID 1000).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && docker-php-ext-install pdo_mysql \
     && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
     && printf 'expose_php = Off\n' > "$PHP_INI_DIR/conf.d/security.ini" \
     && groupadd --gid 1000 appgroup \
     && useradd --uid 1000 --gid appgroup --create-home appuser
 
-# Copier le code apres les dependances pour profiter du cache.
+# Copier le code applicatif apres les dependances pour optimiser le cache de build Docker.
 COPY --chown=appuser:appgroup api.php ./api.php
 
-# Executer PHP avec le compte non-root.
+# Executer le service PHP-FPM avec le compte restreint non-root.
 USER appuser
 
-# Declarer le port FastCGI sans le publier sur la VM.
+# Documenter le port d'ecoute FastCGI interne sans le publier sur l'hote.
 EXPOSE 9000
