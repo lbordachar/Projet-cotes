@@ -101,5 +101,3 @@ ssh -N -L 8087:127.0.0.1:8087 root@10.3.16.141
 ```
 Puis se connecter depuis son navigateur sur `http://localhost:8087`.
 
-### Fichiers en lecture seule
-Le code source du frontend, la configuration de Nginx ainsi que
